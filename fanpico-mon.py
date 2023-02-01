@@ -21,8 +21,12 @@
 
 import os
 import sys
+import logging
+import threading
+import time
 import argparse
 import serial
+import serial.tools.list_ports
 import configparser
 import tkinter as tk
 import customtkinter as ctk
@@ -31,7 +35,7 @@ from pprint import pprint
 from typing import Union, Tuple, Optional
 
 from gui.ctk_dialog import CTkDialog
-
+from gui.edit_unit import EditUnitWindow
 
 
 class BackgroundFrame(ctk.CTkFrame):
@@ -58,111 +62,6 @@ class BackgroundFrame(ctk.CTkFrame):
             self.width = w
             self.height = h
 
-
-class EditUnitWindow(ctk.CTkToplevel):
-    def __init__(self, cfg, unit):
-        super().__init__()
-
-        self.title('Edit unit: ' + unit)
-        self.lift()
-        self.attributes("-topmost",True)
-        self.resizable(False,False)
-        self.grab_set()
-
-        self.result = -1
-        self.cfg = cfg
-        self.unit = unit
-        self.unit_name = tk.StringVar(value=unit)
-        self.device = tk.StringVar(value=cfg.get(unit,'device',fallback=''))
-        self.speed = tk.StringVar(value=cfg.get(unit,'speed',fallback='115200'))
-
-
-        self._entry_label = ctk.CTkLabel(master=self, text='Device Name:')
-        self._entry = ctk.CTkEntry(master=self, width=200, height=25,
-                                   textvariable=self.unit_name)
-
-        self._device_label = ctk.CTkLabel(master=self, text='Device Connection:')
-        self._device = ctk.CTkComboBox(master=self,
-                                       variable=self.device,
-                                       width=300,
-                                       values=["COM1","COM2","/dev/ttyUSB0","/dev/ttyUSB1","/dev/tty.usbmodem833201"])
-
-        self._speed_label = ctk.CTkLabel(master=self, text='Baud Rate (serial):')
-        self._speed = ctk.CTkComboBox(master=self,
-                                      variable=self.speed,
-                                      width=150,
-                                      values=["115200","57600","38400","19200","9600"])
-
-        self._button_frame = ctk.CTkFrame(master=self,fg_color='transparent')
-        self._ok_button = ctk.CTkButton(master=self._button_frame,
-                                        text='OK',
-                                        width=100,
-                                        command=self._ok_event)
-        self._cancel_button = ctk.CTkButton(master=self._button_frame,
-                                            text='Cancel',
-                                            width=100,
-                                            command=self._cancel_event)
-        self._ok_button.grid(row=0,column=0,padx=10,pady=10,sticky="e")
-        self._cancel_button.grid(row=0,column=1,padx=10,pady=10, sticky="w")
-
-
-
-        #self.columnconfigure(1, weight=1)
-        #self.rowconfigure(1, weight=1)
-        self._entry_label.grid(row=0,column=0,padx=5,pady=(5,0),sticky="w")
-        self._entry.grid(row=1,column=0,padx=5,pady=(0,5), sticky="w")
-        self._device_label.grid(row=2,column=0,padx=5,pady=(5,1), sticky="w")
-        self._device.grid(row=3,column=0,padx=5,pady=(1,5), sticky="w")
-        self._speed_label.grid(row=2,column=1,padx=5,pady=(5,1),sticky="w",)
-        self._speed.grid(row=3,column=1,padx=5,pady=(1,5),sticky="w")
-        self._button_frame.grid(row=4,column=0,columnspan=2)
-        self.after(150, lambda: self._entry.focus())
-
-
-
-    def _ok_event(self, event=None):
-        change = self._config_change('device',self.device.get())
-        change += self._config_change('speed',self.speed.get())
-        if change:
-            print("change detected")
-        newname = self.unit_name.get()
-        if self.unit != newname:
-            print("name change: " + self.unit + " -> " + newname)
-            if self.cfg.has_section(newname):
-                print("error unit already exists: " + newname)
-            else:
-                print("rename")
-                self.cfg[newname] = dict(self.cfg[self.unit])
-                self.cfg.remove_section(self.unit)
-                change += 1
-
-        self.grab_release()
-        self.destroy()
-        print(dict(self.cfg[newname]))
-        print("ok")
-        if change > 0:
-            self.result = 1
-        else:
-            self.result = 0
-
-    def _cancel_event(self, event=None):
-        self.grab_release()
-        self.destroy()
-        print("cancel")
-
-    def _config_change(self, name, value):
-        if self.cfg.has_option(self.unit,name):
-            if self.cfg[self.unit][name] != value:
-                self.cfg[self.unit][name] = value
-                return 1
-            else:
-                return 0
-        self.cfg[self.unit][name] = value
-        return 1
-
-    def dialog(self):
-        self.master.wait_window(self)
-        return self.result
 
 
 class MonitorApp(ctk.CTk):
@@ -216,7 +115,7 @@ class MonitorApp(ctk.CTk):
         self.del_button = ctk.CTkButton(self.unit_frame, text="", width=40,
                                         command = self.__del_unit,
                                         image=self.del_icon_image)
-        self.unitnames = tk.StringVar(value=units)
+        self.unitnames = tk.StringVar(value=config.sections())
         self.unit_list = tk.Listbox(self.unit_frame,
                                     listvariable=self.unitnames,
                                     height=5, selectmode='browse',
@@ -247,42 +146,69 @@ class MonitorApp(ctk.CTk):
 
 
     def exit_event(self):
-        if args.debug:
-            print("exit_event")
-        exit()
+        logging.info("exit_event")
+        self.destroy()
 
     def change_appearance_mode_event(self, new_appearance_mode):
         ctk.set_appearance_mode(new_appearance_mode)
 
     def __unit_select(self, event):
         if self.unit_list.curselection():
-            print("select unit: ", self.unit_list.curselection()[0])
+            logging.debug("select unit: %d", self.unit_list.curselection()[0])
 
     def __add_unit(self):
-        if args.debug:
-            print("add unit")
+        logging.debug("add unit")
         l = 1 + len(list(config.sections()))
         while True:
             name = f"fanpico{l}"
             if not config.has_section(name):
                 break
             l += 1
-        config[name]={}
-        res = EditUnitWindow(config, name).dialog()
+        res = EditUnitWindow(name,'','115200').dialog()
         print(res)
-        if res < 0:
-            config.remove_section(name)
+        if len(res['values']) < 1:
+            return
+
+        name = res['values']['name']
+        if config.has_section(name):
+            logging.debug("duplicate unit name: %s", name)
+            CTkDialog(title='Duplicate unit name',
+                      text='Unit with same name already existing unit: ' + res['values']['name'],
+                      show_cancel_button=False).get_input()
         else:
+            logging.debug("add unit: %s",name)
+            config[name] = res['values']
             units = config.sections()
             self.unitnames.set(units)
             self.unit_list.selection_clear(0,tk.END)
             self.unit_list.selection_set(0)
             self.unit_list.activate(0)
+            save_config()
 
     def __edit_unit(self):
         if self.unit_list.curselection():
-            if args.debug:
-                print("edit unit: ", self.unit_list.curselection()[0])
+            unit = self.unit_list.curselection()[0]
+            units = config.sections()
+            logging.debug("edit unit: %d", unit)
+            name = units[unit]
+            res = EditUnitWindow(name, config.get(name,'device',fallback=''), config.get(name,'speed',fallback='115200')).dialog()
+            if len(res['changed']) > 0:
+                logging.debug("save changes to unit")
+                if 'name' in res['changed']:
+                    logging.debug("rename unit")
+                    if config.has_section(res['values']['name']):
+                        CTkDialog(title='Duplicate unit name', text='Cannot rename unit over existing unit: ' + res['values']['name'],
+                                  show_cancel_button=False).get_input()
+                        return
+                    else:
+                        # rename config section
+                        config.remove_section(name)
+                        name = res['values']['name']
+                config[name] = res['values']
+                units = config.sections()
+                self.unitnames.set(units)
+                save_config()
+
 
     def __del_unit(self):
         if self.unit_list.curselection():
@@ -291,16 +217,21 @@ class MonitorApp(ctk.CTk):
             units = config.sections()
             unit_name = units[unit]
             if CTkDialog(title='Remove unit?', text='Remove ' + unit_name + '?').get_input():
-                if args.debug:
-                    print("del unit: ", unit, unit_name)
-                print("delete unit")
+                logging.debug("delete unit: %d (%s) ", unit, unit_name)
                 config.remove_section(unit_name)
                 units = config.sections()
                 self.unitnames.set(units)
                 self.unit_list.selection_clear(0,tk.END)
                 self.unit_list.selection_set(0)
                 self.unit_list.activate(0)
+                save_config()
 
+
+
+def save_config():
+    logging.info("Saving config: " + config_filename)
+    with open(config_filename, 'w') as configfile:
+        config.write(configfile)
 
 
 ##############################################################################
@@ -318,33 +249,31 @@ parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose
 parser.add_argument('--debug', action='store_true', help='enable debug in GUI')
 args = parser.parse_args()
 
+logformat = "%(asctime)s: %(message)s"
+loglevel = logging.WARN
 
 if args.verbose:
-    print("Command line arguments: ", args)
-
-if os.path.exists(config_filename):
-    if args.verbose:
-        print("Reading config file: " + config_filename)
-    config.read(config_filename)
-else:
-    if args.verbose:
-        print("No config file found: " + config_filename)
+    loglevel = logging.INFO
 
 if args.debug:
-    print("Configuration:")
-    pprint(config.__dict__)
+    loglevel = logging.DEBUG
 
-#with open(config_filename, 'w') as configfile:
-#    config.write(configfile)
+logging.basicConfig(format=logformat, level=loglevel)
 
 
-units = config.sections()
-#units = ()
+if os.path.exists(config_filename):
+    logging.info("Main: reading config file: " + config_filename)
+    config.read(config_filename)
+else:
+    logging.warn("Main: No config file found: " + config_filename)
+
 
 ctk.set_appearance_mode(config.get("DEFAULT", "theme"))
 ctk.set_default_color_theme("green")
 
 app = MonitorApp()
 app.mainloop()
+
+logging.info("Main: program done.")
 
 # eof :-)

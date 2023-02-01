@@ -1,5 +1,7 @@
 #
-# ctk_dialog.py based on ctk_input_dialog.py from CustomTinker
+# ctk_dialog.py - simple modal dialog implementation
+#
+# Based on ctk_input_dialog.py from CustomTinker by Tom Schimansky
 #
 #
 
@@ -25,6 +27,7 @@ class CTkDialog(CTkToplevel):
                  button_fg_color: Optional[Union[str, Tuple[str, str]]] = None,
                  button_hover_color: Optional[Union[str, Tuple[str, str]]] = None,
                  button_text_color: Optional[Union[str, Tuple[str, str]]] = None,
+                 show_cancel_button: bool = True,
                  ok_button_text: str = "Yes",
                  cancel_button_text: str = "No",
                  title: str = "CTkDialog",
@@ -37,12 +40,17 @@ class CTkDialog(CTkToplevel):
         self._button_fg_color = ThemeManager.theme["CTkButton"]["fg_color"] if button_fg_color is None else self._check_color_type(button_fg_color)
         self._button_hover_color = ThemeManager.theme["CTkButton"]["hover_color"] if button_hover_color is None else self._check_color_type(button_hover_color)
         self._button_text_color = ThemeManager.theme["CTkButton"]["text_color"] if button_text_color is None else self._check_color_type(button_text_color)
+        self._show_cancel_button = show_cancel_button
+
 
         self._running: bool = False
         self._text = text
         self._result = 0
 
-        self._ok_button_text = ok_button_text
+        if show_cancel_button:
+            self._ok_button_text = ok_button_text
+        else:
+            self._ok_button_text = 'Ok'
         self._cancel_button_text = cancel_button_text
 
         self.title(title)
@@ -75,7 +83,10 @@ class CTkDialog(CTkToplevel):
                                     text_color=self._button_text_color,
                                     text=self._ok_button_text,
                                     command=self._ok_event)
-        self._ok_button.grid(row=2, column=0, columnspan=1, padx=(20, 10), pady=(0, 20), sticky="ew")
+        if self._show_cancel_button:
+            self._ok_button.grid(row=2, column=0, columnspan=1, padx=(20, 10), pady=(0, 20), sticky="ew")
+        else:
+            self._ok_button.grid(row=2, column=0, columnspan=2, padx=(20, 10), pady=(0, 20))
 
         self._cancel_button = CTkButton(master=self,
                                         width=100,
@@ -85,7 +96,8 @@ class CTkDialog(CTkToplevel):
                                         text_color=self._button_text_color,
                                         text=self._cancel_button_text,
                                         command=self._cancel_event)
-        self._cancel_button.grid(row=2, column=1, columnspan=1, padx=(10, 20), pady=(0, 20), sticky="ew")
+        if self._show_cancel_button:
+            self._cancel_button.grid(row=2, column=1, columnspan=1, padx=(10, 20), pady=(0, 20), sticky="ew")
 
         self.after(150, lambda: self._cancel_button.focus())  # set focus to entry with slight delay, otherwise it won't work
 
