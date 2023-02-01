@@ -69,6 +69,7 @@ class EditUnitWindow(ctk.CTkToplevel):
         self.resizable(False,False)
         self.grab_set()
 
+        self.result = -1
         self.cfg = cfg
         self.unit = unit
         self.unit_name = tk.StringVar(value=unit)
@@ -120,31 +121,48 @@ class EditUnitWindow(ctk.CTkToplevel):
 
 
     def _ok_event(self, event=None):
-        if self.config_change('device',self.device.get()):
-            print("device change detected")
-        if self.config_change('speed',self.speed.get()):
-            print("speed change detected")
+        change = self._config_change('device',self.device.get())
+        change += self._config_change('speed',self.speed.get())
+        if change:
+            print("change detected")
+        newname = self.unit_name.get()
+        if self.unit != newname:
+            print("name change: " + self.unit + " -> " + newname)
+            if self.cfg.has_section(newname):
+                print("error unit already exists: " + newname)
+            else:
+                print("rename")
+                self.cfg[newname] = dict(self.cfg[self.unit])
+                self.cfg.remove_section(self.unit)
+                change += 1
+
         self.grab_release()
         self.destroy()
-        print(dict(self.cfg[self.unit]))
+        print(dict(self.cfg[newname]))
         print("ok")
+        if change > 0:
+            self.result = 1
+        else:
+            self.result = 0
 
     def _cancel_event(self, event=None):
         self.grab_release()
         self.destroy()
         print("cancel")
 
-    def config_change(self, name, value):
+    def _config_change(self, name, value):
         if self.cfg.has_option(self.unit,name):
             if self.cfg[self.unit][name] != value:
-                print("changed")
                 self.cfg[self.unit][name] = value
                 return 1
             else:
                 return 0
-        print("new value")
         self.cfg[self.unit][name] = value
         return 1
+
+    def dialog(self):
+        self.master.wait_window(self)
+        return self.result
 
 
 class MonitorApp(ctk.CTk):
@@ -243,10 +261,23 @@ class MonitorApp(ctk.CTk):
     def __add_unit(self):
         if args.debug:
             print("add unit")
-        name = "fanpico2"
-        if not config.has_section(name):
-            config[name]={}
-        tmp = EditUnitWindow(config, name)
+        l = 1 + len(list(config.sections()))
+        while True:
+            name = f"fanpico{l}"
+            if not config.has_section(name):
+                break
+            l += 1
+        config[name]={}
+        res = EditUnitWindow(config, name).dialog()
+        print(res)
+        if res < 0:
+            config.remove_section(name)
+        else:
+            units = config.sections()
+            self.unitnames.set(units)
+            self.unit_list.selection_clear(0,tk.END)
+            self.unit_list.selection_set(0)
+            self.unit_list.activate(0)
 
     def __edit_unit(self):
         if self.unit_list.curselection():
@@ -257,11 +288,18 @@ class MonitorApp(ctk.CTk):
         if self.unit_list.curselection():
             #self.del_button.configure(state='disabled')
             unit = self.unit_list.curselection()[0]
+            units = config.sections()
             unit_name = units[unit]
             if CTkDialog(title='Remove unit?', text='Remove ' + unit_name + '?').get_input():
                 if args.debug:
                     print("del unit: ", unit, unit_name)
                 print("delete unit")
+                config.remove_section(unit_name)
+                units = config.sections()
+                self.unitnames.set(units)
+                self.unit_list.selection_clear(0,tk.END)
+                self.unit_list.selection_set(0)
+                self.unit_list.activate(0)
 
 
 
