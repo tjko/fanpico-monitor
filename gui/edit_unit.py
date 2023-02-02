@@ -18,6 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import logging
 import serial.tools.list_ports
 import tkinter as tk
 import customtkinter as ctk
@@ -30,6 +31,7 @@ class EditUnitWindow(ctk.CTkToplevel):
         self.title('Edit unit: ' + name)
         self.lift()
         self.attributes("-topmost",True)
+        self.protocol("WM_DELETE_WINDOW", self._close_event)
         self.resizable(False,False)
         self.grab_set()
 
@@ -95,10 +97,12 @@ class EditUnitWindow(ctk.CTkToplevel):
         self._speed.grid(row=3,column=1,padx=5,pady=(1,5),sticky="w")
         self._button_frame.grid(row=4,column=0,columnspan=2)
         self.after(150, lambda: self._entry.focus())
+        logging.debug("EditUnitWindow : created")
 
 
 
     def _ok_event(self, event=None):
+        logging.info("EditUnitWindow : ok pressed")
         changed = []
         values = {}
         if self.orig_name != self.unit_name.get():
@@ -120,13 +124,17 @@ class EditUnitWindow(ctk.CTkToplevel):
 
         self.grab_release()
         self.destroy()
-        #print("ok: ", changed)
         self.result = { 'changed': changed, 'values': values }
 
     def _cancel_event(self, event=None):
+        logging.info("EditUnitWindow : cancel pressed")
         self.grab_release()
         self.destroy()
-        #print("cancel")
+
+    def _close_event(self, event=None):
+        logging.info("EditUnitWindow : window closed")
+        self.grab_release()
+        self.destroy()
 
     def dialog(self):
         self.master.wait_window(self)

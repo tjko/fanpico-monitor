@@ -34,34 +34,10 @@ from PIL import Image, ImageTk
 from pprint import pprint
 from typing import Union, Tuple, Optional
 
+import scpi_lite
 from gui.ctk_dialog import CTkDialog
 from gui.edit_unit import EditUnitWindow
-
-
-class BackgroundFrame(ctk.CTkFrame):
-    width = 0
-    height = 0
-
-    def __init__(self, master, *args, **kw):
-        ctk.CTkFrame.__init__(self, master, *args, **kw)
-
-        self.image = Image.open("./assets/bg.jpg")
-        self.bg_image = ctk.CTkImage(self.image, size=(1024, 1024))
-        self.bg_label = ctk.CTkLabel(self, image=self.bg_image, text="")
-        self.bg_label.pack(fill='both',expand=True)
-        self.bg_label.bind('<Configure>', self.__resize_bg)
-
-    def __resize_bg(self, event):
-        w = event.width
-        h = event.height
-
-        if (self.width != w or self.height != h):
-            # print("resize - width:", w, " height:", h)
-            self.bg_image = ctk.CTkImage(self.image, size=(w, h))
-            self.bg_label.configure(image = self.bg_image)
-            self.width = w
-            self.height = h
-
+from gui.about import AboutWindow
 
 
 class MonitorApp(ctk.CTk):
@@ -69,24 +45,25 @@ class MonitorApp(ctk.CTk):
     h = 600
     program_dir = os.path.dirname(os.path.realpath(__file__))
 
-    def __init__(self, *args, **kw):
-        super().__init__(*args, **kw)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.geometry(f"{self.w}x{self.h}")
         self.title("FanPico Monitor")
 
         asset_path = "./assets"
-
+        self.about_window = None
         self.menubar = tk.Menu(self)
         self.config(menu=self.menubar);
 
         self.help_menu = tk.Menu(self.menubar, tearoff=0)
         self.help_menu.add_command(label='Help' )
-        self.help_menu.add_command(label='About...' )
+        self.help_menu.add_command(label='About...', command=self._about_menu)
         self.menubar.add_cascade(label='Help',menu=self.help_menu)
 
-        self.background = BackgroundFrame(self)
+        #self.background = BackgroundFrame(self)
         #self.background.grid(row=0,column=0,rowspan=5,columnspan=5,sticky=('N','S','E','W'))
+
         self.app_logo = ctk.CTkImage(Image.open(os.path.join(asset_path, "fanpico-logo-color.png")),
                                      size=(64,64))
         self.add_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "plus-circle_light.png")),
@@ -96,15 +73,18 @@ class MonitorApp(ctk.CTk):
                                            dark_image=Image.open(os.path.join(asset_path, "trash_dark.png")),
                                            size=(20,20))
         self.edit_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "settings_light.png")),
-                                           dark_image=Image.open(os.path.join(asset_path, "settings_dark.png")),
-                                           size=(20,20))
+                                            dark_image=Image.open(os.path.join(asset_path, "settings_dark.png")),
+                                            size=(20,20))
+        self.power_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "power_light.png")),
+                                             dark_image=Image.open(os.path.join(asset_path, "power_dark.png")),
+                                             size=(20,20))
 
         self.app_logo = ctk.CTkLabel(self, text='FanPico Monitor',
                                      font=ctk.CTkFont(size=15, weight='bold'),
                                      image=self.app_logo,
                                      compound='left')
-        self.app_logo.grid(row=0, column=0, padx=10, pady=10)
 
+        # frame for list of units...
         self.unit_frame = ctk.CTkFrame(self)
         self.add_button = ctk.CTkButton(self.unit_frame, text="", width=40,
                                         command = self.__add_unit,
@@ -123,27 +103,35 @@ class MonitorApp(ctk.CTk):
                                     activestyle='none', relief='sunken',
                                     bg='Gray75', selectbackground='#2CC985',
                                     font=ctk.CTkFont(size=15, slant='roman'))
-        self.unit_list.selection_set(0)
         self.unit_list.bind('<<ListboxSelect>>', self.__unit_select)
-
         self.add_button.grid(row=1,column=0,padx=5,pady=5)
         self.edit_button.grid(row=1,column=1,padx=5,pady=5)
         self.del_button.grid(row=1,column=2,padx=5,pady=5)
         self.unit_list.grid(row=0,column=0,columnspan=3,padx=10,pady=10)
 
-        self.unit_frame.grid(row=1,column=0,padx=10,pady=5,)
 
-        self.exit_button = ctk.CTkButton(self, text="Quit", command=self.exit_event)
-        self.exit_button.grid(row=2,column=0,padx=10,pady=10)
+        self.exit_button = ctk.CTkButton(self, text="", width=30,
+                                         image=self.power_icon_image,
+                                         fg_color='transparent',
+                                         command=self.exit_event)
 
         self.appearance_mode_menu = ctk.CTkOptionMenu(self, values=["Light", "Dark", "System"],
                                                       command=self.change_appearance_mode_event)
         self.appearance_mode_menu.set(config.get("DEFAULT", "theme"))
-        self.appearance_mode_menu.grid(row=4, column=0, padx=20, pady=20, sticky="sw")
 
-        self.columnconfigure(4,weight=1)
+        self.main_frame = ctk.CTkFrame(self)
+        self.main_frame_label = ctk.CTkLabel(self, text='Test')
+
+
+        self.columnconfigure(1,weight=1)
         self.rowconfigure(3,weight=1)
+        self.app_logo.grid(row=0, column=0, padx=10, pady=10)
+        self.main_frame.grid(row=0, column=1, rowspan=4, padx=(0,10), pady=(10,0), sticky="nwse")
+        self.unit_frame.grid(row=1,column=0,padx=10,pady=5)
+        self.appearance_mode_menu.grid(row=4, column=0, padx=20, pady=20, sticky="sw")
+        self.exit_button.grid(row=4,column=1,padx=20,pady=20,sticky="se")
 
+        self.after(100, self.unit_list.selection_set(0))
 
     def exit_event(self):
         logging.info("exit_event")
@@ -226,6 +214,12 @@ class MonitorApp(ctk.CTk):
                 self.unit_list.activate(0)
                 save_config()
 
+    def _about_menu(self):
+        logging.debug('display about window')
+        if self.about_window:
+            self.about_window.deiconify()
+        else:
+            self.about_window = AboutWindow(self, program_version)
 
 
 def save_config():
@@ -236,7 +230,7 @@ def save_config():
 
 ##############################################################################
 
-
+program_version = '0.1.0'
 program_dir = os.path.dirname(os.path.realpath(__file__))
 config_filename = os.environ.get("HOME") + '/.fanpico-mon.ini'
 
@@ -266,6 +260,15 @@ if os.path.exists(config_filename):
     config.read(config_filename)
 else:
     logging.warn("Main: No config file found: " + config_filename)
+
+
+dev = scpi_lite.SCPIDevice('/dev/cu.usbmodem833201', baudrate=115200, timeout=5, verbose=1)
+
+
+print(dev.manufacturer)
+print(dev.model)
+#val = dev.query('*IDN?')
+#print('response: ', val)
 
 
 ctk.set_appearance_mode(config.get("DEFAULT", "theme"))
