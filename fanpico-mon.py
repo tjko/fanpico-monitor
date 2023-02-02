@@ -20,19 +20,16 @@
 #
 
 import os
-import sys
 import logging
 import threading
 import time
 import argparse
-import serial
-import serial.tools.list_ports
 import configparser
 import tkinter as tk
 import customtkinter as ctk
-from PIL import Image, ImageTk
-from pprint import pprint
-from typing import Union, Tuple, Optional
+from PIL import Image
+#from pprint import pprint
+#from typing import Union, Tuple, Optional
 
 import scpi_lite
 from gui.ctk_dialog import CTkDialog
@@ -51,33 +48,35 @@ class MonitorApp(ctk.CTk):
         self.geometry(f"{self.w}x{self.h}")
         self.title("FanPico Monitor")
 
+        logging.info("Screen size: %dx%d\n", self.winfo_screenwidth(), self.winfo_screenheight())
+
         asset_path = "./assets"
         self.about_window = None
         self.menubar = tk.Menu(self)
-        self.config(menu=self.menubar);
+        self.config(menu=self.menubar)
 
         self.help_menu = tk.Menu(self.menubar, tearoff=0)
-        self.help_menu.add_command(label='Help' )
+        self.help_menu.add_command(label='Help')
         self.help_menu.add_command(label='About...', command=self._about_menu)
-        self.menubar.add_cascade(label='Help',menu=self.help_menu)
+        self.menubar.add_cascade(label='Help', menu=self.help_menu)
 
         #self.background = BackgroundFrame(self)
         #self.background.grid(row=0,column=0,rowspan=5,columnspan=5,sticky=('N','S','E','W'))
 
         self.app_logo = ctk.CTkImage(Image.open(os.path.join(asset_path, "fanpico-logo-color.png")),
-                                     size=(64,64))
+                                     size=(64, 64))
         self.add_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "plus-circle_light.png")),
                                            dark_image=Image.open(os.path.join(asset_path, "plus-circle_dark.png")),
-                                           size=(20,20))
+                                           size=(20, 20))
         self.del_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "trash_light.png")),
                                            dark_image=Image.open(os.path.join(asset_path, "trash_dark.png")),
-                                           size=(20,20))
+                                           size=(20, 20))
         self.edit_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "settings_light.png")),
                                             dark_image=Image.open(os.path.join(asset_path, "settings_dark.png")),
-                                            size=(20,20))
+                                            size=(20, 20))
         self.power_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "power_light.png")),
                                              dark_image=Image.open(os.path.join(asset_path, "power_dark.png")),
-                                             size=(20,20))
+                                             size=(20, 20))
 
         self.app_logo = ctk.CTkLabel(self, text='FanPico Monitor',
                                      font=ctk.CTkFont(size=15, weight='bold'),
@@ -87,13 +86,13 @@ class MonitorApp(ctk.CTk):
         # frame for list of units...
         self.unit_frame = ctk.CTkFrame(self)
         self.add_button = ctk.CTkButton(self.unit_frame, text="", width=40,
-                                        command = self.__add_unit,
+                                        command=self.__add_unit,
                                         image=self.add_icon_image)
         self.edit_button = ctk.CTkButton(self.unit_frame, text="", width=40,
-                                         command = self.__edit_unit,
+                                         command=self.__edit_unit,
                                          image=self.edit_icon_image)
         self.del_button = ctk.CTkButton(self.unit_frame, text="", width=40,
-                                        command = self.__del_unit,
+                                        command=self.__del_unit,
                                         image=self.del_icon_image)
         self.unitnames = tk.StringVar(value=config.sections())
         self.unit_list = tk.Listbox(self.unit_frame,
@@ -104,11 +103,10 @@ class MonitorApp(ctk.CTk):
                                     bg='Gray75', selectbackground='#2CC985',
                                     font=ctk.CTkFont(size=15, slant='roman'))
         self.unit_list.bind('<<ListboxSelect>>', self.__unit_select)
-        self.add_button.grid(row=1,column=0,padx=5,pady=5)
-        self.edit_button.grid(row=1,column=1,padx=5,pady=5)
-        self.del_button.grid(row=1,column=2,padx=5,pady=5)
-        self.unit_list.grid(row=0,column=0,columnspan=3,padx=10,pady=10)
-
+        self.add_button.grid(row=1, column=0, padx=5, pady=5)
+        self.edit_button.grid(row=1, column=1, padx=5, pady=5)
+        self.del_button.grid(row=1, column=2, padx=5, pady=5)
+        self.unit_list.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
         self.exit_button = ctk.CTkButton(self, text="", width=30,
                                          image=self.power_icon_image,
@@ -122,14 +120,13 @@ class MonitorApp(ctk.CTk):
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame_label = ctk.CTkLabel(self, text='Test')
 
-
-        self.columnconfigure(1,weight=1)
-        self.rowconfigure(3,weight=1)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(3, weight=1)
         self.app_logo.grid(row=0, column=0, padx=10, pady=10)
-        self.main_frame.grid(row=0, column=1, rowspan=4, padx=(0,10), pady=(10,0), sticky="nwse")
-        self.unit_frame.grid(row=1,column=0,padx=10,pady=5)
+        self.main_frame.grid(row=0, column=1, rowspan=4, padx=(0, 10), pady=(10, 0), sticky="nwse")
+        self.unit_frame.grid(row=1, column=0, padx=10, pady=5)
         self.appearance_mode_menu.grid(row=4, column=0, padx=20, pady=20, sticky="sw")
-        self.exit_button.grid(row=4,column=1,padx=20,pady=20,sticky="se")
+        self.exit_button.grid(row=4, column=1, padx=20, pady=20, sticky="se")
 
         self.after(100, self.unit_list.selection_set(0))
 
@@ -152,23 +149,24 @@ class MonitorApp(ctk.CTk):
             if not config.has_section(name):
                 break
             l += 1
-        res = EditUnitWindow(name,'','115200').dialog()
-        print(res)
+        res = EditUnitWindow(self, name, '', '115200').dialog()
+        logging.info(res)
         if len(res['values']) < 1:
             return
 
         name = res['values']['name']
         if config.has_section(name):
             logging.debug("duplicate unit name: %s", name)
-            CTkDialog(title='Duplicate unit name',
+            CTkDialog(self, relative_position=(50, 50),
+                      title='Duplicate unit name',
                       text='Unit with same name already existing unit: ' + res['values']['name'],
                       show_cancel_button=False).get_input()
         else:
-            logging.debug("add unit: %s",name)
+            logging.debug("add unit: %s", name)
             config[name] = res['values']
             units = config.sections()
             self.unitnames.set(units)
-            self.unit_list.selection_clear(0,tk.END)
+            self.unit_list.selection_clear(0, tk.END)
             self.unit_list.selection_set(0)
             self.unit_list.activate(0)
             save_config()
@@ -179,13 +177,16 @@ class MonitorApp(ctk.CTk):
             units = config.sections()
             logging.debug("edit unit: %d", unit)
             name = units[unit]
-            res = EditUnitWindow(name, config.get(name,'device',fallback=''), config.get(name,'speed',fallback='115200')).dialog()
+            res = EditUnitWindow(self, name, config.get(name, 'device', fallback=''),
+                                 config.get(name, 'speed', fallback='115200')).dialog()
             if len(res['changed']) > 0:
                 logging.debug("save changes to unit")
                 if 'name' in res['changed']:
                     logging.debug("rename unit")
                     if config.has_section(res['values']['name']):
-                        CTkDialog(title='Duplicate unit name', text='Cannot rename unit over existing unit: ' + res['values']['name'],
+                        CTkDialog(self, relative_position=(50, 50),
+                                  title='Duplicate unit name',
+                                  text='Cannot rename unit over existing unit: ' + res['values']['name'],
                                   show_cancel_button=False).get_input()
                         return
                     else:
@@ -197,19 +198,19 @@ class MonitorApp(ctk.CTk):
                 self.unitnames.set(units)
                 save_config()
 
-
     def __del_unit(self):
         if self.unit_list.curselection():
-            #self.del_button.configure(state='disabled')
             unit = self.unit_list.curselection()[0]
             units = config.sections()
             unit_name = units[unit]
-            if CTkDialog(title='Remove unit?', text='Remove ' + unit_name + '?').get_input():
+            if CTkDialog(self, relative_position=(50, 75),
+                         title='Remove unit?',
+                         text='Remove ' + unit_name + '?').get_input():
                 logging.debug("delete unit: %d (%s) ", unit, unit_name)
                 config.remove_section(unit_name)
                 units = config.sections()
                 self.unitnames.set(units)
-                self.unit_list.selection_clear(0,tk.END)
+                self.unit_list.selection_clear(0, tk.END)
                 self.unit_list.selection_set(0)
                 self.unit_list.activate(0)
                 save_config()
@@ -234,9 +235,7 @@ program_version = '0.1.0'
 program_dir = os.path.dirname(os.path.realpath(__file__))
 config_filename = os.environ.get("HOME") + '/.fanpico-mon.ini'
 
-config = configparser.ConfigParser(defaults={'theme':'System'})
-
-
+config = configparser.ConfigParser(defaults={'theme': 'System'})
 
 parser = argparse.ArgumentParser(description='FanPico Monitor')
 parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose (debug) output')
@@ -259,14 +258,12 @@ if os.path.exists(config_filename):
     logging.info("Main: reading config file: " + config_filename)
     config.read(config_filename)
 else:
-    logging.warn("Main: No config file found: " + config_filename)
+    logging.warning("Main: No config file found: " + config_filename)
 
 
-dev = scpi_lite.SCPIDevice('/dev/cu.usbmodem833201', baudrate=115200, timeout=5, verbose=1)
-
-
-print(dev.manufacturer)
-print(dev.model)
+#dev = scpi_lite.SCPIDevice('/dev/cu.usbmodem833201', baudrate=115200, timeout=5, verbose=1)
+#print(dev.manufacturer)
+#print(dev.model)
 #val = dev.query('*IDN?')
 #print('response: ', val)
 
@@ -276,6 +273,7 @@ ctk.set_default_color_theme("green")
 
 app = MonitorApp()
 app.mainloop()
+
 
 logging.info("Main: program done.")
 

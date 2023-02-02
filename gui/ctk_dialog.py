@@ -21,19 +21,20 @@ class CTkDialog(CTkToplevel):
     For detailed information check out the documentation.
     """
 
-    def __init__(self,
+    def __init__(self, master,
                  fg_color: Optional[Union[str, Tuple[str, str]]] = None,
                  text_color: Optional[Union[str, Tuple[str, str]]] = None,
                  button_fg_color: Optional[Union[str, Tuple[str, str]]] = None,
                  button_hover_color: Optional[Union[str, Tuple[str, str]]] = None,
                  button_text_color: Optional[Union[str, Tuple[str, str]]] = None,
+                 relative_position: Optional[Tuple[int, int]] = None,
                  show_cancel_button: bool = True,
                  ok_button_text: str = "Yes",
                  cancel_button_text: str = "No",
                  title: str = "CTkDialog",
                  text: str = "CTkDialog"):
 
-        super().__init__(fg_color=fg_color)
+        super().__init__(master, fg_color=fg_color)
 
         self._fg_color = ThemeManager.theme["CTkToplevel"]["fg_color"] if fg_color is None else self._check_color_type(fg_color)
         self._text_color = ThemeManager.theme["CTkLabel"]["text_color"] if text_color is None else self._check_color_type(button_hover_color)
@@ -41,7 +42,7 @@ class CTkDialog(CTkToplevel):
         self._button_hover_color = ThemeManager.theme["CTkButton"]["hover_color"] if button_hover_color is None else self._check_color_type(button_hover_color)
         self._button_text_color = ThemeManager.theme["CTkButton"]["text_color"] if button_text_color is None else self._check_color_type(button_text_color)
         self._show_cancel_button = show_cancel_button
-
+        self._relative_position = relative_position
 
         self._running: bool = False
         self._text = text
@@ -98,6 +99,11 @@ class CTkDialog(CTkToplevel):
                                         command=self._cancel_event)
         if self._show_cancel_button:
             self._cancel_button.grid(row=2, column=1, columnspan=1, padx=(10, 20), pady=(0, 20), sticky="ew")
+
+        if self._relative_position:
+            win_x = self.master.winfo_x() + self._relative_position[0]
+            win_y = self.master.winfo_y() + self._relative_position[1]
+            self.geometry(f"+{win_x}+{win_y}")
 
         self.after(150, lambda: self._cancel_button.focus())  # set focus to entry with slight delay, otherwise it won't work
 

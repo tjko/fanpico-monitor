@@ -25,8 +25,8 @@ import customtkinter as ctk
 
 
 class EditUnitWindow(ctk.CTkToplevel):
-    def __init__(self, name, device, speed):
-        super().__init__()
+    def __init__(self, master, name, device, speed):
+        super().__init__(master)
 
         self.title('Edit unit: ' + name)
         self.lift()
@@ -34,6 +34,10 @@ class EditUnitWindow(ctk.CTkToplevel):
         self.protocol("WM_DELETE_WINDOW", self._close_event)
         self.resizable(False,False)
         self.grab_set()
+
+        win_x = master.winfo_x() + 100
+        win_y = master.winfo_y() + 100
+        self.geometry(f"+{win_x}+{win_y}")
 
         serial_ports = []
         for s_port in serial.tools.list_ports.comports():
