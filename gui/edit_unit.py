@@ -142,6 +142,7 @@ class EditUnitWindow(ctk.CTkToplevel):
 
     def dialog(self):
         self.master.wait_window(self)
+        self.master.lift()
         return self.result
 
 
