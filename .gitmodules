@@ -1,0 +1,3 @@
+[submodule "scpi_lite"]
+	path = scpi_lite
+	url = https://github.com/tjko/scpi-lite.git

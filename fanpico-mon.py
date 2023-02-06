@@ -19,6 +19,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
+import sys
 import os
 import logging
 import threading
@@ -30,14 +31,17 @@ import configparser
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image
-import scpi_lite
 #from pprint import pprint
 #from typing import Union, Tuple, Optional
+
+program_dir = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, program_dir + "/scpi_lite")
 
 import scpi_lite
 from gui.ctk_dialog import CTkDialog
 from gui.edit_unit import EditUnitWindow
 from gui.about import AboutWindow
+
 
 class FanPico():
     def __init__(self, device, baudrate=115200, timeout=2, verbose=0):
@@ -392,7 +396,6 @@ def save_config():
 ##############################################################################
 
 program_version = '0.1.0'
-program_dir = os.path.dirname(os.path.realpath(__file__))
 config_filename = os.environ.get("HOME") + '/.fanpico-mon.ini'
 
 config = configparser.ConfigParser(defaults={'theme': 'System'})
