@@ -22,12 +22,15 @@
 import os
 import logging
 import threading
+import copy
 import time
+import re
 import argparse
 import configparser
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image
+import scpi_lite
 #from pprint import pprint
 #from typing import Union, Tuple, Optional
 
@@ -35,6 +38,143 @@ import scpi_lite
 from gui.ctk_dialog import CTkDialog
 from gui.edit_unit import EditUnitWindow
 from gui.about import AboutWindow
+
+class FanPico():
+    def __init__(self, device, baudrate=115200, timeout=2, verbose=0):
+        self.device = device
+        self.baudrate = baudrate
+        self.timeout = timeout
+        self.verbose = verbose
+        self.manufacturer = 'N/A'
+        self.model = 'N/A'
+        self.serial = 'N/A'
+        self.firmware = 'N/A'
+        self.status = {}
+
+        try:
+            self.dev = scpi_lite.SCPIDevice(device, baudrate=baudrate, timeout=timeout, verbose=verbose)
+        except scpi_lite.SCPIError as err:
+            logging.error("FanPico: Connection failed: %s", err)
+            self.dev = None
+            return
+        self.manufacturer = self.dev.manufacturer
+        self.model = self.dev.model
+        self.serial = self.dev.serial
+        self.firmware = self.dev.firmware
+
+        self.mutex = threading.Lock()
+        self.thread = threading.Thread(target=self.worker, daemon=True)
+        self.thread.start()
+
+        logging.info("FanPico: connected (%s, %s, v%s)", self.model, self.serial, self.firmware)
+
+    def connected(self):
+        if self.dev:
+            return 1
+        return 0
+
+    def close(self):
+        if self.dev:
+            self.dev.close()
+
+    def get_status(self):
+        with self.mutex:
+            res = copy.deepcopy(self.status)
+        return res
+
+    def worker(self):
+        logging.info("FanPico:worker: started %s", self.device)
+        while True:
+            res = self.dev.query('R?', multi_line=True)
+            logging.debug("response: %d", len(res))
+            with self.mutex:
+                for line in res.split('\n'):
+                    fields = line.split(',')
+                    self.status[fields[0]] = fields[1:]
+                self.status['last_update'] = int(time.time())
+            time.sleep(2)
+        logging.info("FanPico:worker: finished %s", self.device)
+
+
+class FanPicoFrame(ctk.CTkFrame):
+    def __init__(self, master, name, device, baudrate, verbose=0):
+        super().__init__(master)
+
+        self.dev = FanPico(device, baudrate, verbose=verbose)
+        self.name = name
+        self.label_font = ctk.CTkFont(family='Helvetica',size=14,weight="bold")
+        self.text_font = ctk.CTkFont(family='Courier',size=13,weight="bold")
+        self.small_font = ctk.CTkFont(family='Helvetica',size=10)
+
+        self.model = tk.StringVar(value=str(name + ': ' + self.dev.model + ' v' + self.dev.firmware + ' [' + self.dev.serial + ']'))
+
+        self.model_label = ctk.CTkLabel(self, textvariable=self.model)
+        self.w = 500
+        self.h = 340
+        self.cn = tk.Canvas(self, width=self.w, height=self.h, bg='gray50', borderwidth=-3, relief="flat")
+
+        self.columnconfigure(0,weight=1)
+        self.model_label.grid(row=0, column=0, padx=5, pady=(0,0), sticky="w")
+        self.cn.grid(row=1, column=0, padx=5, pady=(0,10), sticky="we")
+
+        self.ci = {}
+        self.initialized = 0
+        self.after(2000, self.update)
+
+    def update(self):
+        logging.debug('FanPicoFrame:update %s', self.name);
+        self.status = self.dev.get_status()
+        if 'last_update' in self.status:
+            if not self.initialized:
+                self._populate_canvas()
+            self._update_canvas()
+        self.after(1000, self.update)
+
+    def _populate_canvas(self):
+        self.initialized = 1
+        self.tstamp = self.cn.create_text(5,self.h - 10, text='', font=self.small_font, fill='black', anchor="nw")
+        count = 0
+        for k, v in sorted(self.status.items()):
+            #logging.info("item='%s': %s", k, v)
+            match = re.search(r"^(\S+)(\d+)$", k)
+            if match:
+                group = match[1]
+                num = int(match[2])
+                line = count * 20 + 5
+                count += 1
+                if group == "fan" or group == "mbfan":
+                    self.ci.setdefault(group,{}).setdefault(k,{})['label'] = self.cn.create_text(5, line, text=k,
+                                                                     font=self.small_font, fill='gray30', anchor="nw")
+                    self.ci.setdefault(group,{}).setdefault(k,{})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
+                                                                     font=self.label_font, fill='black', anchor="nw")
+                    self.ci.setdefault(group,{}).setdefault(k,{})['pwm'] = self.cn.create_text(200, line + 3, text="",
+                                                                                font=self.text_font, fill='black', anchor="nw")
+                    self.ci.setdefault(group,{}).setdefault(k,{})['rpm'] = self.cn.create_text(250, line + 3, text="",
+                                                                     font=self.text_font, fill='black', anchor="nw")
+                if group == "sensor":
+                    self.ci.setdefault(group,{}).setdefault(k,{})['label'] = self.cn.create_text(5, line, text=k,
+                                                                     font=self.small_font, fill='gray30', anchor="nw")
+                    self.ci.setdefault(group,{}).setdefault(k,{})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
+                                                                     font=self.label_font, fill='black', anchor="nw")
+                    self.ci.setdefault(group,{}).setdefault(k,{})['temp'] = self.cn.create_text(250, line + 3, text="",
+                                                                     font=self.text_font, fill='black', anchor="nw")
+                self.cn.create_line(5,line+18,self.w-5,line+18,fill='gray40')
+
+    def _update_canvas(self):
+        logging.debug("update canvas %s", self.name)
+        self.cn.itemconfigure(self.tstamp, text=f"{self.status['last_update']:.0f}")
+        for fan in self.ci['fan']:
+            v = self.status[fan]
+            self.cn.itemconfigure(self.ci['fan'][fan]['pwm'], text=f"{float(v[3]):3.0f} %")
+            self.cn.itemconfigure(self.ci['fan'][fan]['rpm'], text=f"{int(v[1]):6d} rpm")
+        for mbfan in self.ci['mbfan']:
+            v = self.status[mbfan]
+            self.cn.itemconfigure(self.ci['mbfan'][mbfan]['pwm'], text=f"{float(v[3]):3.0f} %")
+            self.cn.itemconfigure(self.ci['mbfan'][mbfan]['rpm'], text=f"{int(v[1]):6d} rpm")
+        for sensor in self.ci['sensor']:
+            v = self.status[sensor]
+            self.cn.itemconfigure(self.ci['sensor'][sensor]['temp'], text=f"{float(v[1]):6.2f} C")
+
 
 
 class MonitorApp(ctk.CTk):
@@ -52,6 +192,7 @@ class MonitorApp(ctk.CTk):
 
         asset_path = "./assets"
         self.about_window = None
+        self.devices = {}
         self.menubar = tk.Menu(self)
         self.config(menu=self.menubar)
 
@@ -85,13 +226,16 @@ class MonitorApp(ctk.CTk):
 
         # frame for list of units...
         self.unit_frame = ctk.CTkFrame(self)
-        self.add_button = ctk.CTkButton(self.unit_frame, text="", width=40,
+        self.add_button = ctk.CTkButton(self.unit_frame, text="", width=30,
+                                        fg_color='transparent',
                                         command=self.__add_unit,
                                         image=self.add_icon_image)
-        self.edit_button = ctk.CTkButton(self.unit_frame, text="", width=40,
+        self.edit_button = ctk.CTkButton(self.unit_frame, text="", width=30,
+                                        fg_color='transparent',
                                          command=self.__edit_unit,
                                          image=self.edit_icon_image)
-        self.del_button = ctk.CTkButton(self.unit_frame, text="", width=40,
+        self.del_button = ctk.CTkButton(self.unit_frame, text="", width=30,
+                                        fg_color='transparent',
                                         command=self.__del_unit,
                                         image=self.del_icon_image)
         self.unitnames = tk.StringVar(value=config.sections())
@@ -100,8 +244,9 @@ class MonitorApp(ctk.CTk):
                                     height=5, selectmode='browse',
                                     bd=0, selectborderwidth=0,
                                     activestyle='none', relief='sunken',
-                                    bg='Gray75', selectbackground='#2CC985',
+                                    bg='Gray50', selectbackground='#2CC985',
                                     font=ctk.CTkFont(size=15, slant='roman'))
+        self.unit_list.selection_set(0)
         self.unit_list.bind('<<ListboxSelect>>', self.__unit_select)
         self.add_button.grid(row=1, column=0, padx=5, pady=5)
         self.edit_button.grid(row=1, column=1, padx=5, pady=5)
@@ -125,10 +270,11 @@ class MonitorApp(ctk.CTk):
         self.app_logo.grid(row=0, column=0, padx=10, pady=10)
         self.main_frame.grid(row=0, column=1, rowspan=4, padx=(0, 10), pady=(10, 0), sticky="nwse")
         self.unit_frame.grid(row=1, column=0, padx=10, pady=5)
-        self.appearance_mode_menu.grid(row=4, column=0, padx=20, pady=20, sticky="sw")
-        self.exit_button.grid(row=4, column=1, padx=20, pady=20, sticky="se")
+        self.appearance_mode_menu.grid(row=4, column=0, padx=10, pady=10, sticky="sw")
+        self.exit_button.grid(row=4, column=1, padx=20, pady=10, sticky="se")
 
-        self.after(100, self.unit_list.selection_set(0))
+        self.after(100, self.unit_list.focus)
+        self.after(1000, self.__unit_select)
 
     def exit_event(self):
         logging.info("exit_event")
@@ -137,9 +283,23 @@ class MonitorApp(ctk.CTk):
     def change_appearance_mode_event(self, new_appearance_mode):
         ctk.set_appearance_mode(new_appearance_mode)
 
-    def __unit_select(self, event):
+    def select_unit(self, unit):
+        units = config.sections()
+        name = units[unit]
+        logging.debug("unit=%d, name='%s'", unit, name)
+        if not name in self.devices:
+            logging.info("connecting to device: %s", name)
+            self.devices[name] = FanPicoFrame(self.main_frame,name,config.get(name, 'device', fallback=''),
+                                                baudrate=config.get(name, 'baudrate', fallback=115200),
+                                                verbose=0)
+            self.devices[name].pack(padx=10,pady=10,side="top",fill="x")
+
+
+    def __unit_select(self, event=None):
         if self.unit_list.curselection():
-            logging.debug("select unit: %d", self.unit_list.curselection()[0])
+            unit = self.unit_list.curselection()[0]
+            logging.debug("select unit: %d", unit)
+            self.select_unit(unit)
 
     def __add_unit(self):
         logging.debug("add unit")
@@ -261,11 +421,19 @@ else:
     logging.warning("Main: No config file found: " + config_filename)
 
 
-#dev = scpi_lite.SCPIDevice('/dev/cu.usbmodem833201', baudrate=115200, timeout=5, verbose=1)
-#print(dev.manufacturer)
+#dev = scpi_lite.SCPIDevice('/dev/cu.usbmodem83101', baudrate=115200, timeout=2, verbose=0)
+#$print(dev.manufacturer)
 #print(dev.model)
-#val = dev.query('*IDN?')
-#print('response: ', val)
+#dev.flush_input()
+#val = dev.query('R?',multi_line=True)
+#print('response:')
+#print(val)
+
+#pico = FanPico('/dev/cu.usbmodem83101', verbose=0)
+
+
+#time.sleep(15)
+#print(pico.get_status())
 
 
 ctk.set_appearance_mode(config.get("DEFAULT", "theme"))
