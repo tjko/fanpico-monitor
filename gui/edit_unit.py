@@ -18,10 +18,11 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import logging
+import logging as log
 import serial.tools.list_ports
 import tkinter as tk
 import customtkinter as ctk
+from .ctk_dialog import CTkDialog
 
 
 class EditUnitWindow(ctk.CTkToplevel):
@@ -30,9 +31,9 @@ class EditUnitWindow(ctk.CTkToplevel):
 
         self.title('Edit unit: ' + name)
         self.lift()
-        self.attributes("-topmost",True)
+        self.attributes("-topmost", True)
         self.protocol("WM_DELETE_WINDOW", self._close_event)
-        self.resizable(False,False)
+        self.resizable(False, False)
         self.grab_set()
 
         win_x = master.winfo_x() + 100
@@ -49,7 +50,7 @@ class EditUnitWindow(ctk.CTkToplevel):
             else:
                 serial_ports.append("/dev/" + port)
 
-        self.result = { 'changed': [], 'values': {} }
+        self.result = {'changed': [], 'values': {}}
         self.orig_name = name
         self.orig_device = device
         self.orig_speed = speed
@@ -59,7 +60,6 @@ class EditUnitWindow(ctk.CTkToplevel):
             self.device = tk.StringVar(value=device)
         else:
             self.device = tk.StringVar(value=serial_ports[0])
-
 
 
         self._entry_label = ctk.CTkLabel(master=self, text='Device Name:')
@@ -76,9 +76,9 @@ class EditUnitWindow(ctk.CTkToplevel):
         self._speed = ctk.CTkComboBox(master=self,
                                       variable=self.speed,
                                       width=150,
-                                      values=["115200","57600","38400","19200","9600"])
+                                      values=["115200", "57600", "38400", "19200", "9600"])
 
-        self._button_frame = ctk.CTkFrame(master=self,fg_color='transparent')
+        self._button_frame = ctk.CTkFrame(master=self, fg_color='transparent')
         self._ok_button = ctk.CTkButton(master=self._button_frame,
                                         text='OK',
                                         width=100,
@@ -87,26 +87,24 @@ class EditUnitWindow(ctk.CTkToplevel):
                                             text='Cancel',
                                             width=100,
                                             command=self._cancel_event)
-        self._ok_button.grid(row=0,column=0,padx=10,pady=10,sticky="e")
-        self._cancel_button.grid(row=0,column=1,padx=10,pady=10, sticky="w")
+        self._ok_button.grid(row=0, column=0, padx=10, pady=10, sticky="e")
+        self._cancel_button.grid(row=0, column=1, padx=10, pady=10, sticky="w")
 
-
-        #self.columnconfigure(1, weight=1)
-        #self.rowconfigure(1, weight=1)
-        self._entry_label.grid(row=0,column=0,padx=5,pady=(5,0),sticky="w")
-        self._entry.grid(row=1,column=0,padx=5,pady=(0,5), sticky="w")
-        self._device_label.grid(row=2,column=0,padx=5,pady=(5,1), sticky="w")
-        self._device.grid(row=3,column=0,padx=5,pady=(1,5), sticky="w")
-        self._speed_label.grid(row=2,column=1,padx=5,pady=(5,1),sticky="w",)
-        self._speed.grid(row=3,column=1,padx=5,pady=(1,5),sticky="w")
-        self._button_frame.grid(row=4,column=0,columnspan=2)
+        # self.columnconfigure(1, weight=1)
+        # self.rowconfigure(1, weight=1)
+        self._entry_label.grid(row=0, column=0, padx=5, pady=(5, 0), sticky="w")
+        self._entry.grid(row=1, column=0, padx=5, pady=(0, 5), sticky="w")
+        self._device_label.grid(row=2, column=0, padx=5, pady=(5, 1), sticky="w")
+        self._device.grid(row=3, column=0, padx=5, pady=(1, 5), sticky="w")
+        self._speed_label.grid(row=2, column=1, padx=5, pady=(5, 1), sticky="w",)
+        self._speed.grid(row=3, column=1, padx=5, pady=(1, 5), sticky="w")
+        self._button_frame.grid(row=4, column=0, columnspan=2)
         self.after(150, lambda: self._entry.focus())
-        logging.debug("EditUnitWindow : created")
+        log.debug("EditUnitWindow : created")
 
 
-
-    def _ok_event(self, event=None):
-        logging.info("EditUnitWindow : ok pressed")
+    def _ok_event(self):
+        log.info("EditUnitWindow : ok pressed")
         changed = []
         values = {}
         if self.orig_name != self.unit_name.get():
@@ -121,22 +119,23 @@ class EditUnitWindow(ctk.CTkToplevel):
 
         for field in values:
             if values[field] == '':
-                CTkDialog(title='Missing Input',
+                CTkDialog(self,
+                          title='Missing Input',
                           text='Field ' + field + ' cannot be empty.',
                           show_cancel_button=False).get_input()
                 return
 
         self.grab_release()
         self.destroy()
-        self.result = { 'changed': changed, 'values': values }
+        self.result = {'changed': changed, 'values': values}
 
-    def _cancel_event(self, event=None):
-        logging.info("EditUnitWindow : cancel pressed")
+    def _cancel_event(self):
+        log.info("EditUnitWindow : cancel pressed")
         self.grab_release()
         self.destroy()
 
-    def _close_event(self, event=None):
-        logging.info("EditUnitWindow : window closed")
+    def _close_event(self):
+        log.info("EditUnitWindow : window closed")
         self.grab_release()
         self.destroy()
 
@@ -144,7 +143,6 @@ class EditUnitWindow(ctk.CTkToplevel):
         self.master.wait_window(self)
         self.master.lift()
         return self.result
-
 
 
 # eof :-)

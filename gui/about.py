@@ -18,7 +18,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import logging
+import logging as log
 import customtkinter as ctk
 from PIL import Image
 
@@ -82,14 +82,14 @@ class AboutWindow(ctk.CTkToplevel):
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
-        logging.debug("AboutWindow : window created")
+        log.debug("AboutWindow : window created")
 
     def _click_event(self, event):
-        logging.info("AboutWindow : mouse click: %s", event)
+        log.info("AboutWindow : mouse click: %s", event)
         self.withdraw()
 
     def _on_closing(self):
-        logging.info("AboutWindow: window withdrawn")
+        log.info("AboutWindow: window withdrawn")
         self.withdraw()
 
 # eof :-)

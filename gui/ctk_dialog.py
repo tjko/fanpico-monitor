@@ -6,13 +6,12 @@
 #
 
 from typing import Union, Tuple, Optional
-#from .widgets import CTkLabel
-#from .widgets import CTkEntry
-#from .widgets import CTkButton
-#from .widgets.theme import ThemeManager
-#from .ctk_toplevel import CTkToplevel
-from customtkinter import CTkLabel, CTkEntry, CTkButton, ThemeManager, CTkToplevel
-
+# from .widgets import CTkLabel
+# from .widgets import CTkEntry
+# from .widgets import CTkButton
+# from .widgets.theme import ThemeManager
+# from .ctk_toplevel import CTkToplevel
+from customtkinter import CTkLabel, CTkButton, ThemeManager, CTkToplevel
 
 
 class CTkDialog(CTkToplevel):
@@ -75,7 +74,6 @@ class CTkDialog(CTkToplevel):
                                text=self._text,)
         self._label.grid(row=0, column=0, columnspan=2, padx=20, pady=20, sticky="ew")
 
-
         self._ok_button = CTkButton(master=self,
                                     width=100,
                                     border_width=0,
@@ -107,7 +105,7 @@ class CTkDialog(CTkToplevel):
 
         self.after(150, lambda: self._cancel_button.focus())  # set focus to entry with slight delay, otherwise it won't work
 
-    def _ok_event(self, event=None):
+    def _ok_event(self):
         self._result = 1
         self.grab_release()
         self.destroy()

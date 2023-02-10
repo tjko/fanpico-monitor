@@ -21,7 +21,7 @@
 
 import sys
 import os
-import logging
+import logging as log
 import threading
 import copy
 import time
@@ -31,8 +31,7 @@ import configparser
 import tkinter as tk
 import customtkinter as ctk
 from PIL import Image
-#from pprint import pprint
-from typing import Union, Tuple, Optional
+# from typing import Union, Tuple, Optional
 
 program_dir = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, program_dir + "/scpi_lite")
@@ -41,69 +40,10 @@ import scpi_lite
 from gui.ctk_dialog import CTkDialog
 from gui.edit_unit import EditUnitWindow
 from gui.about import AboutWindow
+from gui.time_plot import TimePlot
 
 
-class TimePlot(tk.Canvas):
-    def __init__(self, master, data,
-                 y_range: Optional[Tuple[int, int]] = (0, 100),
-                 t_range: Optional[int] = 120,
-                 width: Optional[int] = 300,
-                 height: Optional[int] = 200,
-                 color: str = 'red',
-                 *args, **kwargs):
-        super().__init__(master, width=width, height=height, *args, **kwargs)
-
-        self.data = data
-        self.y_range = y_range
-        self.t_range = t_range
-        self.color = color
-        self.w = width
-        self.h = height
-        #self.border = self.create_line(0, 0, width-1, 0, width-1, height-1, 0, height-1, 0, 0, fill=self.color)
-        self.plot = None
-
-    def update(self, time):
-        t = int(time)
-        logging.debug("TimePlot:update %d", time)
-        logging.debug("%s", self.data)
-        t_min = t - self.t_range
-        x_f = self.t_range / self.w
-        y_f = (self.y_range[1] - self.y_range[0]) / (self.h - 1)
-
-        sum = []
-        count = []
-        sum = [0 for i in range(self.w + 1)]
-        count = [0 for i in range(self.w + 1)]
-
-
-        for k, v in self.data.items():
-            if k >= t_min:
-                slot = int((k - t_min) / x_f)
-                #print(k,slot)
-                sum[slot] += float(v)
-                count[slot] += 1
-        points = []
-        for i in range(self.w):
-            if count[i]:
-                last_x = i
-                points.append(i)
-                a = sum[i] / count[i]
-                #if (a < self.y_range[0]):
-                #    a=self.y_range[0]
-                #if (a > self.y_range[1]):
-                #    a=self.y_range[1]
-                a -= self.y_range[0]
-                points.append(self.h - int(a / y_f) - 1)
-
-        if len(points) >= 4:
-            points.extend((self.w -1, points[-1]))
-            #points.extend((self.w - 1, points[-1], self.w -1, self.h - 1, points[0], self.h - 1))
-            if self.plot:
-                self.coords(self.plot, points)
-            else:
-                self.plot=self.create_line(points, fill=self.color)
-
-class FanPico():
+class FanPico:
     def __init__(self, device, baudrate=115200, timeout=2, verbose=0):
         self.device = device
         self.baudrate = baudrate
@@ -119,7 +59,7 @@ class FanPico():
         try:
             self.dev = scpi_lite.SCPIDevice(device, baudrate=baudrate, timeout=timeout, verbose=verbose)
         except scpi_lite.SCPIError as err:
-            logging.error("FanPico: Connection failed: %s", err)
+            log.error("FanPico: Connection failed: %s", err)
             self.dev = None
             return
         self.manufacturer = self.dev.manufacturer
@@ -129,7 +69,7 @@ class FanPico():
 
         self.thread = threading.Thread(target=self.worker, daemon=True)
         self.thread.start()
-        logging.info("FanPico: connected (%s, %s, v%s)", self.model, self.serial, self.firmware)
+        log.info("FanPico: connected (%s, %s, v%s)", self.model, self.serial, self.firmware)
 
     def connected(self):
         if self.dev:
@@ -146,17 +86,17 @@ class FanPico():
         return res
 
     def worker(self):
-        logging.info("FanPico:worker: started %s", self.device)
+        log.info("FanPico:worker: started %s", self.device)
         while True:
             res = self.dev.query('R?', multi_line=True)
-            logging.debug("response: %d", len(res))
+            log.debug("response: %d", len(res))
             with self.mutex:
                 for line in res.split('\n'):
                     fields = line.split(',')
                     self.status[fields[0]] = fields[1:]
                 self.status['last_update'] = int(time.time())
             time.sleep(2)
-        logging.info("FanPico:worker: finished %s", self.device)
+        log.info("FanPico:worker: finished %s", self.device)
 
 
 class FanPicoFrame(ctk.CTkFrame):
@@ -165,97 +105,114 @@ class FanPicoFrame(ctk.CTkFrame):
 
         self.dev = FanPico(device, baudrate, verbose=verbose)
         self.name = name
-        self.label_font = ctk.CTkFont(family='Helvetica',size=14,weight="bold")
-        self.text_font = ctk.CTkFont(family='Courier',size=13,weight="bold")
-        self.small_font = ctk.CTkFont(family='Helvetica',size=10)
+        self.label_font = ctk.CTkFont(family='Helvetica', size=14, weight="bold")
+        self.text_font = ctk.CTkFont(family='Courier', size=13, weight="bold")
+        self.small_font = ctk.CTkFont(family='Helvetica', size=10)
 
         self.model = tk.StringVar(value=str(name + ': ' + self.dev.model + ' v' + self.dev.firmware + ' [' + self.dev.serial + ']'))
 
         self.model_label = ctk.CTkLabel(self, textvariable=self.model)
         self.w = 510
-        self.h = 480
+        self.h = 460
         self.cn = tk.Canvas(self, width=self.w, height=self.h, bg='gray50', borderwidth=-3, relief="flat")
 
-        self.columnconfigure(0,weight=1)
-        self.model_label.grid(row=0, column=0, padx=5, pady=(0,0), sticky="w")
-        self.cn.grid(row=1, column=0, padx=5, pady=(0,10), sticky="we")
+        self.columnconfigure(0, weight=1)
+        self.model_label.grid(row=0, column=0, padx=5, pady=(0, 0), sticky="w")
+        self.cn.grid(row=1, column=0, padx=5, pady=(0, 10), sticky="we")
 
         self.ci = {}
         self.initialized = 0
         self.data = {}
+        self.tstamp = None
+        self.status = None
+
         self.after(2000, self.update)
+        self.after(3600000, self._purge_old_data)
 
     def update(self):
-        logging.debug('FanPicoFrame:update %s', self.name);
+        log.debug('FanPicoFrame:update %s', self.name)
         if self.dev.connected():
             self.status = self.dev.get_status()
             if 'last_update' in self.status:
                 for k, v in self.status.items():
                     if k.startswith('fan'):
-                        self.data.setdefault(k,{})[self.status['last_update']] = v[3]
+                        self.data.setdefault(k, {})[self.status['last_update']] = v[3]
                     if k.startswith('mbfan'):
-                        self.data.setdefault(k,{})[self.status['last_update']] = v[3]
+                        self.data.setdefault(k, {})[self.status['last_update']] = v[3]
                     if k.startswith('sensor'):
-                        self.data.setdefault(k,{})[self.status['last_update']] = v[1]
+                        self.data.setdefault(k, {})[self.status['last_update']] = v[1]
                 if not self.initialized:
                     self._populate_canvas()
                 self._update_canvas()
                 self.after(1000, self.update)
 
+    def _purge_old_data(self):
+        purge_t = int(time.time()) - 360
+        for k, v in self.data.items():
+            a = [i for i in v.keys() if i < purge_t]
+            if len(a) > 0:
+                log.debug("purging old data %s: %d entries", k, len(a))
+                for k in a:
+                    del v[k]
+        self.after(3600000, self._purge_old_data)
+
     def _populate_canvas(self):
+        spacing = 30
         self.initialized = 1
-        self.tstamp = self.cn.create_text(5,self.h - 15, text='', font=self.small_font, fill='black', anchor="nw")
+        if log.getLogger().isEnabledFor(log.DEBUG):
+            self.tstamp = self.cn.create_text(5, self.h - spacing, text='', font=self.small_font, fill='black', anchor="nw")
         count = 0
         for k, v in sorted(self.status.items()):
-            #logging.info("item='%s': %s", k, v)
+            #log.info("item='%s': %s", k, v)
             match = re.search(r"^(\S+)(\d+)$", k)
             if match:
                 group = match[1]
-                num = int(match[2])
-                line = count * 30 + 10
+                # num = int(match[2])
+                line = count * spacing + 10
                 count += 1
                 if group == "fan" or group == "mbfan":
-                    self.ci.setdefault(group,{}).setdefault(k,{})['label'] = self.cn.create_text(5, line, text=k,
-                                                                     font=self.small_font, fill='gray30', anchor="nw")
-                    self.ci.setdefault(group,{}).setdefault(k,{})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
+                    self.ci.setdefault(group, {}).setdefault(k, {})['label'] = self.cn.create_text(5, line, text=k,
+                                                                                font=self.small_font, fill='gray30', anchor="nw")
+                    self.ci.setdefault(group, {}).setdefault(k, {})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
                                                                      font=self.label_font, fill='black', anchor="nw")
-                    self.ci.setdefault(group,{}).setdefault(k,{})['pwm'] = self.cn.create_text(200, line + 3, text="",
+                    self.ci.setdefault(group, {}).setdefault(k, {})['pwm'] = self.cn.create_text(200, line + 3, text="",
                                                                                 font=self.text_font, fill='black', anchor="nw")
-                    self.ci.setdefault(group,{}).setdefault(k,{})['rpm'] = self.cn.create_text(250, line + 3, text="",
+                    self.ci.setdefault(group, {}).setdefault(k, {})['rpm'] = self.cn.create_text(250, line + 3, text="",
                                                                      font=self.text_font, fill='black', anchor="nw")
-                    p = TimePlot(self.cn, self.data[k], width=150,height=25,bd=-3,bg='gray50',color='green')
-                    self.ci[group][k]['plot'] = self.cn.create_window(350, line -7, anchor="nw", window=p, width=150, height=25)
+                    p = TimePlot(self.cn, self.data[k], width=150, height=spacing-5, bd=-3, bg='gray50', color='#2cc985', t_range=60)
+                    self.ci[group][k]['plot'] = self.cn.create_window(350, line-7, anchor="nw", window=p, width=150, height=spacing-5)
                     self.ci[group][k]['plot_obj'] = p
                 if group == "sensor":
-                    self.ci.setdefault(group,{}).setdefault(k,{})['label'] = self.cn.create_text(5, line, text=k,
+                    self.ci.setdefault(group, {}).setdefault(k, {})['label'] = self.cn.create_text(5, line, text=k,
                                                                      font=self.small_font, fill='gray30', anchor="nw")
-                    self.ci.setdefault(group,{}).setdefault(k,{})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
+                    self.ci.setdefault(group, {}).setdefault(k, {})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
                                                                      font=self.label_font, fill='black', anchor="nw")
-                    self.ci.setdefault(group,{}).setdefault(k,{})['temp'] = self.cn.create_text(250, line + 3, text="",
+                    self.ci.setdefault(group, {}).setdefault(k, {})['temp'] = self.cn.create_text(250, line + 3, text="",
                                                                      font=self.text_font, fill='black', anchor="nw")
-                    p = TimePlot(self.cn, self.data[k], width=150,height=25,bd=-3,bg='gray50',color='red')
-                    self.ci[group][k]['plot'] = self.cn.create_window(350, line -7, anchor="nw", window=p, width=150, height=25)
+                    p = TimePlot(self.cn, self.data[k], width=151, height=spacing-5, bd=-3, bg='gray50', color='#2cc985', t_range=60)
+                    self.ci[group][k]['plot'] = self.cn.create_window(350, line-7, anchor="nw", window=p, width=150, height=spacing-5)
                     self.ci[group][k]['plot_obj'] = p
-                self.cn.create_line(5,line+20,self.w-5,line+20,fill='gray40')
+                self.cn.create_line(5, line+20, self.w-5, line+20, fill='gray40')
 
     def _update_canvas(self):
         t = int(time.time())
-        logging.debug("update canvas %s", self.name)
-        self.cn.itemconfigure(self.tstamp, text=f"{self.status['last_update']:.0f}")
+        log.debug("update canvas %s", self.name)
+        if self.tstamp:
+            self.cn.itemconfigure(self.tstamp, text=f"{self.status['last_update']:.0f}")
         for fan in self.ci['fan']:
             v = self.status[fan]
             self.cn.itemconfigure(self.ci['fan'][fan]['pwm'], text=f"{float(v[3]):3.0f} %")
             self.cn.itemconfigure(self.ci['fan'][fan]['rpm'], text=f"{int(v[1]):6d} rpm")
-            self.ci['fan'][fan]['plot_obj'].update(t)
+            self.ci['fan'][fan]['plot_obj'].update_plot(t)
         for mbfan in self.ci['mbfan']:
             v = self.status[mbfan]
             self.cn.itemconfigure(self.ci['mbfan'][mbfan]['pwm'], text=f"{float(v[3]):3.0f} %")
             self.cn.itemconfigure(self.ci['mbfan'][mbfan]['rpm'], text=f"{int(v[1]):6d} rpm")
-            self.ci['mbfan'][mbfan]['plot_obj'].update(t)
+            self.ci['mbfan'][mbfan]['plot_obj'].update_plot(t)
         for sensor in self.ci['sensor']:
             v = self.status[sensor]
             self.cn.itemconfigure(self.ci['sensor'][sensor]['temp'], text=f"{float(v[1]):6.2f} C")
-            self.ci['sensor'][sensor]['plot_obj'].update(t)
+            self.ci['sensor'][sensor]['plot_obj'].update_plot(t)
 
 
 
@@ -270,7 +227,7 @@ class MonitorApp(ctk.CTk):
         self.geometry(f"{self.w}x{self.h}")
         self.title("FanPico Monitor")
 
-        logging.info("Screen size: %dx%d\n", self.winfo_screenwidth(), self.winfo_screenheight())
+        log.info("Screen size: %dx%d", self.winfo_screenwidth(), self.winfo_screenheight())
 
         asset_path = "./assets"
         self.about_window = None
@@ -283,8 +240,6 @@ class MonitorApp(ctk.CTk):
         self.help_menu.add_command(label='About...', command=self._about_menu)
         self.menubar.add_cascade(label='Help', menu=self.help_menu)
 
-        #self.background = BackgroundFrame(self)
-        #self.background.grid(row=0,column=0,rowspan=5,columnspan=5,sticky=('N','S','E','W'))
 
         self.app_logo = ctk.CTkImage(Image.open(os.path.join(asset_path, "fanpico-logo-color.png")),
                                      size=(64, 64))
@@ -359,7 +314,7 @@ class MonitorApp(ctk.CTk):
         self.after(1000, self.__unit_select)
 
     def exit_event(self):
-        logging.info("exit_event")
+        log.info("exit_event")
         self.destroy()
 
     def change_appearance_mode_event(self, new_appearance_mode):
@@ -368,22 +323,22 @@ class MonitorApp(ctk.CTk):
     def select_unit(self, unit):
         units = config.sections()
         name = units[unit]
-        logging.debug("unit=%d, name='%s'", unit, name)
+        log.debug("unit=%d, name='%s'", unit, name)
         if not name in self.devices:
-            logging.info("connecting to device: %s", name)
-            self.devices[name] = FanPicoFrame(self.main_frame,name,config.get(name, 'device', fallback=''),
+            log.info("Connecting to device: %s", name)
+            self.devices[name] = FanPicoFrame(self.main_frame, name, config.get(name, 'device', fallback=''),
                                                 baudrate=config.get(name, 'baudrate', fallback=115200),
                                                 verbose=0)
-            self.devices[name].pack(padx=10,pady=10,side="top",fill="x")
+            self.devices[name].pack(padx=10, pady=10, side="top", fill="x")
 
-    def __unit_select(self, event=None):
+    def __unit_select(self):
         if self.unit_list.curselection():
             unit = self.unit_list.curselection()[0]
-            logging.debug("select unit: %d", unit)
+            log.debug("select unit: %d", unit)
             self.select_unit(unit)
 
     def __add_unit(self):
-        logging.debug("add unit")
+        log.debug("add unit")
         l = 1 + len(list(config.sections()))
         while True:
             name = f"fanpico{l}"
@@ -391,19 +346,19 @@ class MonitorApp(ctk.CTk):
                 break
             l += 1
         res = EditUnitWindow(self, name, '', '115200').dialog()
-        logging.info(res)
+        log.info(res)
         if len(res['values']) < 1:
             return
 
         name = res['values']['name']
         if config.has_section(name):
-            logging.debug("duplicate unit name: %s", name)
+            log.debug("duplicate unit name: %s", name)
             CTkDialog(self, relative_position=(50, 50),
                       title='Duplicate unit name',
                       text='Unit with same name already existing unit: ' + res['values']['name'],
                       show_cancel_button=False).get_input()
         else:
-            logging.debug("add unit: %s", name)
+            log.debug("add unit: %s", name)
             config[name] = res['values']
             units = config.sections()
             self.unitnames.set(units)
@@ -416,14 +371,14 @@ class MonitorApp(ctk.CTk):
         if self.unit_list.curselection():
             unit = self.unit_list.curselection()[0]
             units = config.sections()
-            logging.debug("edit unit: %d", unit)
+            log.debug("edit unit: %d", unit)
             name = units[unit]
             res = EditUnitWindow(self, name, config.get(name, 'device', fallback=''),
                                  config.get(name, 'speed', fallback='115200')).dialog()
             if len(res['changed']) > 0:
-                logging.debug("save changes to unit")
+                log.debug("save changes to unit")
                 if 'name' in res['changed']:
-                    logging.debug("rename unit")
+                    log.debug("rename unit")
                     if config.has_section(res['values']['name']):
                         CTkDialog(self, relative_position=(50, 50),
                                   title='Duplicate unit name',
@@ -447,7 +402,7 @@ class MonitorApp(ctk.CTk):
             if CTkDialog(self, relative_position=(50, 75),
                          title='Remove unit?',
                          text='Remove ' + unit_name + '?').get_input():
-                logging.debug("delete unit: %d (%s) ", unit, unit_name)
+                log.debug("delete unit: %d (%s) ", unit, unit_name)
                 config.remove_section(unit_name)
                 units = config.sections()
                 self.unitnames.set(units)
@@ -457,7 +412,7 @@ class MonitorApp(ctk.CTk):
                 save_config()
 
     def _about_menu(self):
-        logging.debug('display about window')
+        log.debug('display about window')
         if self.about_window:
             self.about_window.deiconify()
         else:
@@ -465,14 +420,14 @@ class MonitorApp(ctk.CTk):
 
 
 def save_config():
-    logging.info("Saving config: " + config_filename)
+    log.info("Saving config: " + config_filename)
     with open(config_filename, 'w') as configfile:
         config.write(configfile)
 
 
 ##############################################################################
 
-program_version = '0.1.0'
+program_version = '1.0.0beta'
 config_filename = os.environ.get("HOME") + '/.fanpico-mon.ini'
 
 config = configparser.ConfigParser(defaults={'theme': 'System'})
@@ -482,47 +437,28 @@ parser.add_argument('-v', '--verbose', action='store_true', help='enable verbose
 parser.add_argument('--debug', action='store_true', help='enable debug in GUI')
 args = parser.parse_args()
 
-logformat = "%(asctime)s: %(message)s"
-loglevel = logging.WARN
-
-if args.verbose:
-    loglevel = logging.INFO
-
 if args.debug:
-    loglevel = logging.DEBUG
-
-logging.basicConfig(format=logformat, level=loglevel)
-
+    log_level = log.DEBUG
+elif args.verbose:
+    log_level = log.INFO
+else:
+    log_level = log.WARN
+log.basicConfig(format="%(asctime)s: %(message)s", level=log_level)
 
 if os.path.exists(config_filename):
-    logging.info("Main: reading config file: " + config_filename)
+    log.info("Main: reading config file: " + config_filename)
     config.read(config_filename)
 else:
-    logging.warning("Main: No config file found: " + config_filename)
-
-
-#dev = scpi_lite.SCPIDevice('/dev/cu.usbmodem83101', baudrate=115200, timeout=2, verbose=0)
-#$print(dev.manufacturer)
-#print(dev.model)
-#dev.flush_input()
-#val = dev.query('R?',multi_line=True)
-#print('response:')
-#print(val)
-
-#pico = FanPico('/dev/cu.usbmodem83101', verbose=0)
-
-
-#time.sleep(15)
-#print(pico.get_status())
-
+    log.warning("Main: No config file found: " + config_filename)
 
 ctk.set_appearance_mode(config.get("DEFAULT", "theme"))
 ctk.set_default_color_theme("green")
+
 
 app = MonitorApp()
 app.mainloop()
 
 
-logging.info("Main: program done.")
+log.info("Main: program done.")
 
 # eof :-)
