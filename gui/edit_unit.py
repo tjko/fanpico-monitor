@@ -61,7 +61,6 @@ class EditUnitWindow(ctk.CTkToplevel):
         else:
             self.device = tk.StringVar(value=serial_ports[0])
 
-
         self._entry_label = ctk.CTkLabel(master=self, text='Device Name:')
         self._entry = ctk.CTkEntry(master=self, width=200, height=25,
                                    textvariable=self.unit_name)
@@ -101,7 +100,6 @@ class EditUnitWindow(ctk.CTkToplevel):
         self._button_frame.grid(row=4, column=0, columnspan=2)
         self.after(150, lambda: self._entry.focus())
         log.debug("EditUnitWindow : created")
-
 
     def _ok_event(self):
         log.info("EditUnitWindow : ok pressed")
