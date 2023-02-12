@@ -12,6 +12,7 @@ Install required modules using pip:
 ```
 # pip3 install customtkinter
 # pip3 install pyserial
+# pip3 install pillow
 ```
 
 
