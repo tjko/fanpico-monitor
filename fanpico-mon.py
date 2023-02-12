@@ -240,6 +240,7 @@ class MonitorApp(ctk.CTk):
         self.help_menu.add_command(label='About...', command=self._about_menu)
         self.menubar.add_cascade(label='Help', menu=self.help_menu)
 
+        self.wm_iconbitmap(os.path.join(asset_path, "fanpico.ico"))
 
         self.app_logo = ctk.CTkImage(Image.open(os.path.join(asset_path, "fanpico-logo-color.png")),
                                      size=(64, 64))
