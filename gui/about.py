@@ -55,7 +55,9 @@ class AboutWindow(ctk.CTkToplevel):
         super().__init__(master, *args, **kwargs)
 
         self.title('About FanPico Monitor')
-        # self.geometry("500x400")
+        win_x = master.winfo_x() + 100
+        win_y = master.winfo_y() + 100
+        self.geometry(f"+{win_x}+{win_y}")
         self.lift()
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 

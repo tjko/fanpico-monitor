@@ -86,14 +86,19 @@ class FanPico:
         return res
 
     def worker(self):
-        log.info("FanPico:worker: started %s", self.device)
+        log.info("FanPico:worker(%s): started", self.device)
         while True:
-            res = self.dev.query('R?', multi_line=True)
-            log.debug("response: %d", len(res))
+            try:
+                res = self.dev.query('R?', multi_line=True)
+            except scpi_lite.SCPIError as err:
+                log.info("FanPico:worker(%s): error: %s", self.device, err)
+                return
+            log.debug("FanPico:worker(%s): response length: %d", self.device, len(res))
             with self.mutex:
                 for line in res.split('\n'):
                     fields = line.split(',')
-                    self.status[fields[0]] = fields[1:]
+                    if len(fields) > 1:
+                        self.status[fields[0]] = fields[1:]
                 self.status['last_update'] = int(time.time())
             time.sleep(2)
         log.info("FanPico:worker: finished %s", self.device)
@@ -129,6 +134,12 @@ class FanPicoFrame(ctk.CTkFrame):
         self.after(2000, self.update)
         self.after(3600000, self._purge_old_data)
 
+    def destroy(self):
+        log.info('FanPicoFrame:destroy %s', self.name)
+        if self.dev:
+            self.dev.close()
+        super().destroy()
+
     def update(self):
         log.debug('FanPicoFrame:update %s', self.name)
         if self.dev.connected():
@@ -160,7 +171,7 @@ class FanPicoFrame(ctk.CTkFrame):
         spacing = 30
         self.initialized = 1
         if log.getLogger().isEnabledFor(log.DEBUG):
-            self.tstamp = self.cn.create_text(5, self.h - spacing, text='', font=self.small_font, fill='black', anchor="nw")
+            self.tstamp = self.cn.create_text(5, self.h - 10 , text='', font=self.small_font, fill='black', anchor="nw")
         count = 0
         for k, v in sorted(self.status.items()):
             #log.info("item='%s': %s", k, v)
@@ -171,10 +182,10 @@ class FanPicoFrame(ctk.CTkFrame):
                 line = count * spacing + 10
                 count += 1
                 if group == "fan" or group == "mbfan":
-                    self.ci.setdefault(group, {}).setdefault(k, {})['label'] = self.cn.create_text(5, line, text=k,
-                                                                                font=self.small_font, fill='gray30', anchor="nw")
-                    self.ci.setdefault(group, {}).setdefault(k, {})['name'] = self.cn.create_text(50, line, text=v[0].strip('"'),
-                                                                     font=self.label_font, fill='black', anchor="nw")
+                    self.ci.setdefault(group, {}).setdefault(k, {})['label'] = self.cn.create_text(5,
+                                                    line, text=k, font=self.small_font, fill='gray30', anchor="nw")
+                    self.ci.setdefault(group, {}).setdefault(k, {})['name'] = self.cn.create_text(50,
+                                                    line, text=v[0].strip('"'), font=self.label_font, fill='black', anchor="nw")
                     self.ci.setdefault(group, {}).setdefault(k, {})['pwm'] = self.cn.create_text(200, line + 3, text="",
                                                                                 font=self.text_font, fill='black', anchor="nw")
                     self.ci.setdefault(group, {}).setdefault(k, {})['rpm'] = self.cn.create_text(250, line + 3, text="",
@@ -235,12 +246,13 @@ class MonitorApp(ctk.CTk):
         self.menubar = tk.Menu(self)
         self.config(menu=self.menubar)
 
-        self.help_menu = tk.Menu(self.menubar, tearoff=0)
-        self.help_menu.add_command(label='Help')
-        self.help_menu.add_command(label='About...', command=self._about_menu)
-        self.menubar.add_cascade(label='Help', menu=self.help_menu)
+        #self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        #self.help_menu.add_command(label='Help')
+        #self.help_menu.add_command(label='About...', command=self._about_menu)
+        #self.menubar.add_cascade(label='Help', menu=self.help_menu)
 
         self.wm_iconbitmap(os.path.join(asset_path, "fanpico.ico"))
+        self.iconphoto(True, tk.PhotoImage(file=os.path.join(asset_path, "fanpico-logo-color.png")))
 
         self.app_logo = ctk.CTkImage(Image.open(os.path.join(asset_path, "fanpico-logo-color.png")),
                                      size=(64, 64))
@@ -256,6 +268,9 @@ class MonitorApp(ctk.CTk):
         self.power_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "power_light.png")),
                                              dark_image=Image.open(os.path.join(asset_path, "power_dark.png")),
                                              size=(20, 20))
+        self.info_icon_image = ctk.CTkImage(light_image=Image.open(os.path.join(asset_path, "info_light.png")),
+                                            dark_image=Image.open(os.path.join(asset_path, "info_dark.png")),
+                                            size=(20, 20))
 
         self.app_logo = ctk.CTkLabel(self, text='FanPico Monitor',
                                      font=ctk.CTkFont(size=15, weight='bold'),
@@ -291,14 +306,23 @@ class MonitorApp(ctk.CTk):
         self.del_button.grid(row=1, column=2, padx=5, pady=5)
         self.unit_list.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
-        self.exit_button = ctk.CTkButton(self, text="", width=30,
+        self.button_frame = ctk.CTkFrame(self, fg_color='transparent')
+        self.exit_button = ctk.CTkButton(self.button_frame, text="", width=30,
                                          image=self.power_icon_image,
                                          fg_color='transparent',
                                          command=self.exit_event)
 
-        self.appearance_mode_menu = ctk.CTkOptionMenu(self, values=["Light", "Dark", "System"],
+        self.info_button = ctk.CTkButton(self.button_frame, text="", width=30,
+                                         image=self.info_icon_image,
+                                         fg_color='transparent',
+                                         command=self._about_menu)
+
+        self.appearance_mode_menu = ctk.CTkOptionMenu(self.button_frame, values=["Light", "Dark", "System"],
                                                       command=self.change_appearance_mode_event)
         self.appearance_mode_menu.set(config.get("DEFAULT", "theme"))
+        self.exit_button.grid(row=0,column=2,padx=1,pady=10)
+        self.info_button.grid(row=0,column=1,padx=1,pady=10)
+        self.appearance_mode_menu.grid(row=0,column=0,padx=10,pady=10)
 
         self.main_frame = ctk.CTkFrame(self)
         self.main_frame_label = ctk.CTkLabel(self, text='Test')
@@ -306,10 +330,12 @@ class MonitorApp(ctk.CTk):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(3, weight=1)
         self.app_logo.grid(row=0, column=0, padx=10, pady=10)
-        self.main_frame.grid(row=0, column=1, rowspan=4, padx=(0, 10), pady=(10, 0), sticky="nwse")
+        self.main_frame.grid(row=0, column=1, rowspan=5, padx=(0, 10), pady=(10, 10), sticky="nwse")
         self.unit_frame.grid(row=1, column=0, padx=10, pady=5)
-        self.appearance_mode_menu.grid(row=4, column=0, padx=10, pady=10, sticky="sw")
-        self.exit_button.grid(row=4, column=1, padx=20, pady=10, sticky="se")
+        #self.appearance_mode_menu.grid(row=4, column=0, padx=10, pady=10, sticky="sw")
+        #self.info_button.grid(row=3, column=0, padx=20, pady=10, sticky="se")
+        #self.exit_button.grid(row=3, column=1, padx=20, pady=10, sticky="se")
+        self.button_frame.grid(row=4, column=0, padx=5, pady=10, sticky='sw')
 
         self.after(100, self.unit_list.focus)
         self.after(1000, self.__unit_select)
@@ -332,7 +358,7 @@ class MonitorApp(ctk.CTk):
                                                 verbose=0)
             self.devices[name].pack(padx=10, pady=10, side="top", fill="x")
 
-    def __unit_select(self):
+    def __unit_select(self, event=None):
         if self.unit_list.curselection():
             unit = self.unit_list.curselection()[0]
             log.debug("select unit: %d", unit)
@@ -404,6 +430,8 @@ class MonitorApp(ctk.CTk):
                          title='Remove unit?',
                          text='Remove ' + unit_name + '?').get_input():
                 log.debug("delete unit: %d (%s) ", unit, unit_name)
+                self.devices[unit_name].destroy()
+                del self.devices[unit_name]
                 config.remove_section(unit_name)
                 units = config.sections()
                 self.unitnames.set(units)
