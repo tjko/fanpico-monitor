@@ -1,9 +1,12 @@
 # fanpico-monitor
 Application for monitoring [FanPico](https://github.com/tjko/fanpico/) units.
 
-![screenshot (Windows)](images/fanpico-monitor-win.png)
-
 This is a simple desktop application for monitoring FanPico unit(s) written in Python so it works on Linux, MacOS and Windows.
+
+![screenshot (MacOC)](images/fanpico-monitor-macos.png)
+
+Windows version looks similar: [Windows Version Screenshot](images/fanpico-monitor-win.png)
+
 
 
 
